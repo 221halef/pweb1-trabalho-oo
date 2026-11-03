@@ -10,6 +10,8 @@ require_once __DIR__ . '/../src/Pedido.php';
 
 date_default_timezone_set('America/Fortaleza');
 
+const LINHAS_PEDIDO = 3;
+
 function e(string|int|float $valor): string
 {
     return htmlspecialchars((string) $valor, ENT_QUOTES, 'UTF-8');
@@ -33,6 +35,20 @@ function dataBr(string $data): string
 function dataEmDias(int $dias): string
 {
     return date('Y-m-d', strtotime(sprintf('%+d days', $dias)));
+}
+
+function campo(string $nome): string
+{
+    $valor = $_POST[$nome] ?? '';
+
+    return is_string($valor) ? $valor : '';
+}
+
+function campoLista(string $nome): array
+{
+    $valor = $_POST[$nome] ?? [];
+
+    return is_array($valor) ? array_filter($valor, 'is_string') : [];
 }
 
 function unidade(array $produto): string
@@ -100,6 +116,58 @@ if (isset($_GET['id']) && is_string($_GET['id']) && ctype_digit($_GET['id'])) {
     $id = (int) $_GET['id'];
 }
 
+$valoresVazios = [
+    'cliente' => '',
+    'produto' => array_fill(0, LINHAS_PEDIDO, ''),
+    'quantidade' => array_fill(0, LINHAS_PEDIDO, ''),
+];
+$valores = $valoresVazios;
+$erroFormulario = '';
+$pedidoCriado = null;
+
+if ($pagina === 'novo-pedido' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $codigos = campoLista('produto');
+    $quantidades = campoLista('quantidade');
+
+    $valores['cliente'] = campo('cliente');
+    for ($i = 0; $i < LINHAS_PEDIDO; $i++) {
+        $valores['produto'][$i] = $codigos[$i] ?? '';
+        $valores['quantidade'][$i] = $quantidades[$i] ?? '';
+    }
+
+    try {
+        $novoPedido = new Pedido($valores['cliente']);
+
+        for ($i = 0; $i < LINHAS_PEDIDO; $i++) {
+            $codigo = $valores['produto'][$i];
+            if ($codigo === '') {
+                continue;
+            }
+
+            if (!ctype_digit($codigo) || !isset($produtos[(int) $codigo])) {
+                throw new Exception('Escolha um produto válido da lista.');
+            }
+
+            $escolhido = $produtos[(int) $codigo];
+            $texto = str_replace(',', '.', trim($valores['quantidade'][$i]));
+            if (!is_numeric($texto) || !is_finite((float) $texto)) {
+                throw new Exception("Informe uma quantidade válida para {$escolhido->getNome()}.");
+            }
+
+            $novoPedido->adicionarItem(new ItemPedido($escolhido, (float) $texto));
+        }
+
+        if (count($novoPedido->getItens()) === 0) {
+            throw new Exception('Escolha ao menos um produto para o pedido.');
+        }
+
+        $pedidoCriado = $novoPedido->paraArray();
+        $valores = $valoresVazios;
+    } catch (Exception $e) {
+        $erroFormulario = $e->getMessage();
+    }
+}
+
 $status = 200;
 $mensagemErro = '';
 $dados = [];
@@ -124,6 +192,9 @@ switch ($pagina) {
         break;
     case 'pedidos':
         $dados = ['pedidos' => array_values($listaPedidos)];
+        break;
+    case 'novo-pedido':
+        $dados = ['produtos' => array_values($listaProdutos)];
         break;
     case 'pedido':
         if (isset($listaPedidos[$id])) {
@@ -155,12 +226,14 @@ $menu = [
     'inicio' => 'Início',
     'produtos' => 'Produtos',
     'pedidos' => 'Pedidos',
+    'novo-pedido' => 'Novo pedido',
 ];
 
 $menuAtivo = match ($pagina) {
     'inicio' => 'inicio',
     'produto', 'produtos' => 'produtos',
     'pedido', 'pedidos' => 'pedidos',
+    'novo-pedido' => 'novo-pedido',
     default => '',
 };
 
@@ -183,7 +256,7 @@ $linkJson = '?' . http_build_query($parametrosJson);
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($titulo) ?> | Feira Digital do Sertão</title>
-  <link rel="stylesheet" href="estilo.css">
+  <link rel="stylesheet" href="/estilo.css">
 </head>
 <body>
   <header class="topo">
@@ -293,6 +366,65 @@ $linkJson = '?' . http_build_query($parametrosJson);
           </tfoot>
         </table>
         <p><a href="?pagina=pedidos">Voltar aos pedidos</a></p>
+      </section>
+
+    <?php elseif ($pagina === 'novo-pedido'): ?>
+      <section>
+        <h2>Novo pedido</h2>
+
+        <?php if ($erroFormulario !== ''): ?>
+          <p class="erro"><?= e($erroFormulario) ?></p>
+        <?php endif; ?>
+
+        <?php if ($pedidoCriado !== null): ?>
+          <div class="sucesso">
+            <h3>Pedido registrado para <?= e($pedidoCriado['cliente']) ?></h3>
+            <table>
+              <thead>
+                <tr><th>Produto</th><th>Quantidade</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                <?php foreach ($pedidoCriado['itens'] as $item): ?>
+                  <tr>
+                    <td><?= e($item['produto']['nome']) ?></td>
+                    <td><?= e(quantidade($item['quantidade'])) ?> <?= e(unidade($item['produto'])) ?></td>
+                    <td><?= e(moeda($item['subtotal'])) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+              <tfoot>
+                <tr><th colspan="2">Total</th><th><?= e(moeda($pedidoCriado['total'])) ?></th></tr>
+              </tfoot>
+            </table>
+          </div>
+        <?php endif; ?>
+
+        <form class="formulario" method="post" action="?pagina=novo-pedido">
+          <label for="cliente">Cliente</label>
+          <input type="text" id="cliente" name="cliente" value="<?= e($valores['cliente']) ?>">
+
+          <?php for ($i = 0; $i < LINHAS_PEDIDO; $i++): ?>
+            <div class="linha-item">
+              <div>
+                <label for="produto<?= e($i) ?>">Produto <?= e($i + 1) ?></label>
+                <select id="produto<?= e($i) ?>" name="produto[]">
+                  <option value="">Nenhum</option>
+                  <?php foreach ($listaProdutos as $produto): ?>
+                    <option value="<?= e($produto['id']) ?>"<?= $valores['produto'][$i] === (string) $produto['id'] ? ' selected' : '' ?>>
+                      <?= e($produto['nome']) ?> (<?= e(moeda($produto['preco'])) ?>/<?= e(unidade($produto)) ?>)
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div>
+                <label for="quantidade<?= e($i) ?>">Quantidade</label>
+                <input type="text" inputmode="decimal" id="quantidade<?= e($i) ?>" name="quantidade[]" value="<?= e($valores['quantidade'][$i]) ?>">
+              </div>
+            </div>
+          <?php endfor; ?>
+
+          <button type="submit" class="botao">Registrar pedido</button>
+        </form>
       </section>
     <?php endif; ?>
 

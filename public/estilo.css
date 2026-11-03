@@ -146,7 +146,69 @@ tfoot th {
   border-top: 1px solid var(--palha);
 }
 
+h3 {
+  color: var(--terra-escura);
+  margin-top: 0;
+}
+
+.formulario {
+  display: grid;
+  gap: 0.5rem;
+  background: #fff;
+  padding: 1.25rem;
+  border-radius: 8px;
+}
+
+.formulario label {
+  font-weight: 600;
+  color: var(--terra-escura);
+}
+
+.formulario input,
+.formulario select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--palha);
+  border-radius: 6px;
+  font: inherit;
+  background: #fffdf8;
+}
+
+.linha-item {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.75rem;
+}
+
+.formulario .botao {
+  justify-self: start;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  margin-top: 0.5rem;
+}
+
+.erro {
+  background: #fbe3dc;
+  border-left: 5px solid #b3321b;
+  color: #6e1d0e;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+}
+
+.sucesso {
+  background: #e6f0d8;
+  border-left: 5px solid var(--verde);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+}
+
 @media (max-width: 600px) {
+  .linha-item {
+    grid-template-columns: 1fr;
+  }
+
   table {
     font-size: 0.9rem;
   }
